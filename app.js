@@ -5,6 +5,33 @@ import { dirname,join } from 'node:path';
 import { Server } from 'socket.io'
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
+import { availableParallelism } from 'node:os';
+import cluster from 'node:cluster';
+import { createAdapter, setupPrimary } from '@socket.io/cluster-adapter'
+
+if (cluster.isPrimary) {
+    const numCPUs = availableParallelism()
+    for (let i = 0; i < numCPUs; i++) {
+        cluster.fork({
+            PORT: 3000 + i
+        })
+    }setupPrimary()
+}else {
+    const app = express();
+  const server = createServer(app);
+  const io = new Server(server, {
+    connectionStateRecovery: {},
+    // set up the adapter on each worker thread
+    adapter: createAdapter()
+})
+
+const port = process.env.PORT
+
+server.listen(port, ()=>{
+    console.log(`server running at http://localhost:${port}`);
+    
+})
+
 
 const db = await open({
     filename: 'chat.db',
@@ -18,11 +45,7 @@ await db.exec(`
     `)
 
 
-const app = express()
-const server = createServer(app)
-const io = new Server(server,{
-    connectionStateRecovery: {}
-})
+
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -53,6 +76,4 @@ io.on('connection', async(socket) =>{
         }
     }
 })
-server.listen(3000, ()=>{
-    console.log('server listening on port 3000');
-})
+}
